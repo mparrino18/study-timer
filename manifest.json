@@ -1,0 +1,9 @@
+{
+  "name": "Study Timer",
+  "short_name": "Study Timer",
+  "icons": [
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "start_url": "/study-timer/",
+  "display": "standalone"
+}
