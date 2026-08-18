@@ -54,8 +54,7 @@ header{display:flex; align-items:baseline; justify-content:space-between; paddin
 .iconbtn:active{color:var(--text)}
 
 /* index tabs - the signature */
-.tabs{display:flex; gap:5px; overflow-x:auto; padding:2px 0 0; margin:0 calc(var(--pad)*-1); padding-left:var(--pad); padding-right:var(--pad); scrollbar-width:none}
-.tabs::-webkit-scrollbar{display:none}
+.tabs{display:flex; flex-wrap:wrap; gap:5px; padding:2px 0 0; margin:0 calc(var(--pad)*-1); padding-left:var(--pad); padding-right:var(--pad)}
 .tab{
   flex:0 0 auto; min-width:62px; border:0; cursor:pointer; font-family:var(--ui);
   background:var(--surface2); color:var(--muted);
