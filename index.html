@@ -414,7 +414,7 @@ function buildStopNote(){
   if($("tagReviewing").getAttribute("aria-pressed")==="true") tags.push("Reviewing");
   var label = tags.join(", ");
   var free = $("stopNote").value.trim();
-  if(label && free) return label + " — " + free;
+  if(label && free) return label + " - " + free;
   return label || free;   // one of them, or "" if neither
 }
 
@@ -444,6 +444,17 @@ $("stopCancel").onclick = function(){
 };
 
 /* ---------- export ---------- */
+// The workbook reads the CSV as plain Windows (ANSI) text, so fancy Unicode
+// punctuation (em dashes, iPhone smart quotes, ellipsis) would arrive garbled.
+// Fold the common ones down to plain ASCII before writing.
+function asciiSafe(v){
+  return String(v)
+    .replace(/[‘’‚‛]/g, "'")   // curly single quotes -> '
+    .replace(/[“”„‟]/g, '"')   // curly double quotes -> "
+    .replace(/[–—]/g, "-")               // en/em dash -> -
+    .replace(/…/g, "...")                     // ellipsis -> ...
+    .replace(/ /g, " ");                      // non-breaking space -> space
+}
 function csvCell(v){
   v = (v===undefined||v===null) ? "" : String(v);
   return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
@@ -451,7 +462,7 @@ function csvCell(v){
 function buildCsv(rows){
   var out = ["sync_id,date,class,start,end,minutes,source,notes"];
   rows.forEach(function(s){
-    out.push([s.id, s.date, s.cls, s.start||"", s.end||"", s.mins, "Phone", s.note||""]
+    out.push([s.id, s.date, s.cls, s.start||"", s.end||"", s.mins, "Phone", asciiSafe(s.note||"")]
       .map(csvCell).join(","));
   });
   return out.join("\r\n")+"\r\n";
