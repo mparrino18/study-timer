@@ -54,7 +54,8 @@ header{display:flex; align-items:baseline; justify-content:space-between; paddin
 .iconbtn:active{color:var(--text)}
 
 /* index tabs - the signature */
-.tabs{display:flex; flex-wrap:wrap; gap:5px; padding:2px 0 0; margin:0 calc(var(--pad)*-1); padding-left:var(--pad); padding-right:var(--pad)}
+.tabs{display:flex; gap:5px; overflow-x:auto; padding:2px 0 0; margin:0 calc(var(--pad)*-1); padding-left:var(--pad); padding-right:var(--pad); scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
 .tab{
   flex:0 0 auto; min-width:62px; border:0; cursor:pointer; font-family:var(--ui);
   background:var(--surface2); color:var(--muted);
@@ -136,6 +137,26 @@ textarea{font-family:var(--mono); font-size:14px; line-height:1.9; min-height:19
   font-size:13.5px; font-weight:600; opacity:0; transition:.25s ease; pointer-events:none; max-width:88vw; text-align:center;
 }
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+
+/* stop popup */
+.modal{position:fixed; inset:0; z-index:15; background:rgba(10,11,14,.6); display:none; align-items:flex-end; justify-content:center}
+.modal.open{display:flex}
+.modal .panel{
+  background:var(--surface); width:100%; max-width:560px; border:1px solid var(--line); border-bottom:0;
+  border-radius:18px 18px 0 0; padding:24px 20px calc(24px + env(safe-area-inset-bottom));
+  animation:rise .28s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes rise{from{transform:translateY(30px); opacity:.4} to{transform:translateY(0); opacity:1}}
+.mtitle{font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--dim); font-weight:600}
+.msub{font-size:15px; color:var(--muted); margin-top:6px; font-weight:500}
+.tagrow{display:flex; gap:10px; margin-top:18px}
+.tag{
+  flex:1; border:0; cursor:pointer; font-family:var(--ui);
+  background:var(--surface2); color:var(--muted); border-radius:10px; padding:16px;
+  font-size:15px; font-weight:700; letter-spacing:.04em;
+  box-shadow:inset 0 0 0 1px var(--line); transition:background .15s ease, color .15s ease;
+}
+.tag[aria-pressed="true"]{background:var(--flag); color:#0E1014; box-shadow:none}
 @media (prefers-reduced-motion: reduce){*{animation:none !important; transition:none !important}}
 </style>
 </head>
@@ -178,7 +199,7 @@ textarea{font-family:var(--mono); font-size:14px; line-height:1.9; min-height:19
 
     <h2>Classes</h2>
     <textarea id="classText" spellcheck="false" autocapitalize="words"></textarea>
-    <div class="hint">One per line. These must match the Setup sheet in the workbook <em>exactly</em>, or imported sessions will not land in the right column.</div>
+    <div class="hint">One per line, up to 8. These must match the Setup sheet in the workbook <em>exactly</em>, or imported sessions will not land in the right column.</div>
     <button class="btn primary" id="saveClasses">Save classes</button>
 
     <h2>Add a session you didn't time</h2>
@@ -201,6 +222,20 @@ textarea{font-family:var(--mono); font-size:14px; line-height:1.9; min-height:19
   </div>
 </div>
 
+<div class="modal" id="stopModal">
+  <div class="panel">
+    <div class="mtitle">What was this?</div>
+    <div class="msub" id="stopSub">Session</div>
+    <div class="tagrow">
+      <button class="tag" id="tagReading" aria-pressed="false">Reading</button>
+      <button class="tag" id="tagReviewing" aria-pressed="false">Reviewing</button>
+    </div>
+    <input type="text" id="stopNote" placeholder="Notes (optional)" autocapitalize="sentences">
+    <button class="btn primary" id="stopSubmit">Submit</button>
+    <button class="btn" id="stopCancel">Cancel — keep timing</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -208,7 +243,7 @@ textarea{font-family:var(--mono); font-size:14px; line-height:1.9; min-height:19
 "use strict";
 
 var FLAGS = ["#E8476F","#F0A22E","#2BA89B","#7B6CE0","#EF6B45","#57A93C","#3D86D9","#C9743A"];
-var K_CLASSES="sl.classes", K_SESSIONS="sl.sessions", K_RUN="sl.running";
+var K_CLASSES="sl.classes", K_SESSIONS="sl.sessions", K_RUN="sl.running", K_PENDING="sl.pendingStop";
 
 var $ = function(id){ return document.getElementById(id); };
 var store = {
@@ -340,21 +375,72 @@ $("go").onclick = function(){
     if(mins < 0.5 && !confirm("That was under 30 seconds. Keep it?")){
       running = null; store.set(K_RUN, null); stopTicking(); render(); return;
     }
-    var s = new Date(running.startMs), e = new Date(end);
-    sessions.push({
-      id: uid(), cls: running.cls, startMs: running.startMs,
-      date: ymd(s), start: hhmm(s), end: hhmm(e), mins: mins, note:"", sent:false
-    });
-    store.set(K_SESSIONS, sessions);
+    var stopData = { cls: running.cls, startMs: running.startMs, endMs: end, mins: mins };
     running = null; store.set(K_RUN, null);
     stopTicking();
-    toast("Logged "+Math.round(mins)+" min");
+    render();
+    openStopModal(stopData);
+    return;
   } else {
     if(!picked) return;
     running = { cls: picked, startMs: Date.now() };
     store.set(K_RUN, running);
     startTicking();
   }
+  render();
+};
+
+/* ---------- stop popup ---------- */
+var pendingStop = store.get(K_PENDING, null);
+
+function openStopModal(data){
+  pendingStop = data;
+  store.set(K_PENDING, data);   // survive an app close before Submit/Cancel
+  $("tagReading").setAttribute("aria-pressed","false");
+  $("tagReviewing").setAttribute("aria-pressed","false");
+  $("stopNote").value = "";
+  $("stopSub").textContent = data.cls + "  ·  " + Math.round(data.mins) + " min";
+  $("stopModal").classList.add("open");
+}
+
+function toggleTag(b){
+  b.setAttribute("aria-pressed", b.getAttribute("aria-pressed")==="true" ? "false" : "true");
+}
+$("tagReading").onclick   = function(){ toggleTag(this); };
+$("tagReviewing").onclick = function(){ toggleTag(this); };
+
+function buildStopNote(){
+  var tags = [];
+  if($("tagReading").getAttribute("aria-pressed")==="true")   tags.push("Reading");
+  if($("tagReviewing").getAttribute("aria-pressed")==="true") tags.push("Reviewing");
+  var label = tags.join(", ");
+  var free = $("stopNote").value.trim();
+  if(label && free) return label + " — " + free;
+  return label || free;   // one of them, or "" if neither
+}
+
+$("stopSubmit").onclick = function(){
+  if(!pendingStop) return;
+  var data = pendingStop; pendingStop = null; store.set(K_PENDING, null);
+  var s = new Date(data.startMs), e = new Date(data.endMs);
+  sessions.push({
+    id: uid(), cls: data.cls, startMs: data.startMs,
+    date: ymd(s), start: hhmm(s), end: hhmm(e), mins: data.mins,
+    note: buildStopNote(), sent:false
+  });
+  store.set(K_SESSIONS, sessions);
+  $("stopModal").classList.remove("open");
+  toast("Logged "+Math.round(data.mins)+" min");
+  render();
+};
+
+$("stopCancel").onclick = function(){
+  if(!pendingStop) return;
+  var data = pendingStop; pendingStop = null; store.set(K_PENDING, null);
+  running = { cls: data.cls, startMs: data.startMs };   // pick the same session back up
+  store.set(K_RUN, running);
+  startTicking();
+  $("stopModal").classList.remove("open");
   render();
 };
 
@@ -443,7 +529,7 @@ $("saveClasses").onclick = function(){
   var list = $("classText").value.split("\n")
     .map(function(s){ return s.trim(); })
     .filter(function(s){ return s.length; })
-    .slice(0,20);
+    .slice(0,8);
   if(!list.length){ toast("Add at least one class"); return; }
   classes = list;
   store.set(K_CLASSES, classes);
@@ -482,6 +568,7 @@ document.addEventListener("visibilitychange", function(){ if(!document.hidden) t
 window.addEventListener("pageshow", tick);
 if(running) startTicking();
 render();
+if(pendingStop) openStopModal(pendingStop);   // a Stop was left un-answered last time — bring it back
 
 })();
 </script>
